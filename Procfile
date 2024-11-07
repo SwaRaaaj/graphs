@@ -1,1 +1,1 @@
-web: python GRAPHS/try.py
+web: python graphs/try.py
