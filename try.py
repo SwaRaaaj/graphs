@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 # Load and clean data
-data = pd.read_excel(r"C:\Users\layek\Downloads\TruEstimate Final Sheet Project (2).xlsx", header=1)
+data = pd.read_excel('data/TruEstimate Final Sheet Project (2).xlsx', header=1)
 data['Launch Date'] = pd.to_datetime(data['Launch Date'], errors='coerce')
 data['Handover date'] = pd.to_datetime(data['Handover date'], errors='coerce')
 data['Developer Name'] = data['Developer Name'].str.strip()  # Remove extra whitespace in developer names
