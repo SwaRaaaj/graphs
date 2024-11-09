@@ -374,5 +374,7 @@ def generate_asset_type_units_graph(area):
     else:
         return html.Div(f"No data available for {area} - Asset Type Units Over Time")
 
-if __name__ == '__main__':
-    app.run_server(debug=True)
+# Run the app
+# Run the app
+if __name__ == "__main__":
+    app.run_server(host='0.0.0.0', port=10000, debug=True)
