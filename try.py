@@ -11,7 +11,7 @@ df = pd.read_excel("./data/TruEstimate Final Sheet Project (5).xlsx", sheet_name
 
 # Data Preprocessing
 df['Launch Date'] = pd.to_datetime(df['Launch Date'], errors='coerce')
-df = df[df['Launch Date'] > '2022-01-01']
+df = df[df['Launch Date'] > '2022-10-01']
 
 df['Year'] = df['Launch Date'].dt.year
 df['Quarter'] = df['Launch Date'].dt.quarter
@@ -267,15 +267,16 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
             margin=dict(l=40, r=40, t=40, b=120)
         )
 
-        heatmap_fig = px.imshow(pivot_total_units_df.set_index('Year'),
-                                labels=dict(x="Quarter", y="Year", color="Total Units"),
-                                x=pivot_total_units_df.columns[1:],
-                                y=pivot_total_units_df['Year'],
-                                title='Total Units by Quarter (Heatmap)')
-        heatmap_fig.update_layout(
+        # Replace heatmap with area chart
+        area_fig = px.area(total_units_df, x='YearQuarter', y='Total no. of units',
+                           title='Total Units by Quarter (Area Chart)')
+        area_fig.update_layout(
+            xaxis_tickangle=-45,
+            xaxis_title='Year-Quarter',
+            yaxis_title='Total Units',
             font=dict(size=12),
             height=400,
-            margin=dict(l=40, r=40, t=40, b=80)
+            margin=dict(l=40, r=40, t=40, b=120)
         )
 
         return [
@@ -290,11 +291,9 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
                 percentage_table
             ]), className='mb-4'),
             dbc.Row([
-                dbc.Col(dcc.Graph(figure=line_fig), md=6),
-                dbc.Col(dcc.Graph(figure=bar_fig), md=6)
-            ]),
-            dbc.Row([
-                dbc.Col(dcc.Graph(figure=heatmap_fig), md=12)
+                dbc.Col(dcc.Graph(figure=line_fig), md=4),
+                dbc.Col(dcc.Graph(figure=bar_fig), md=4),
+                dbc.Col(dcc.Graph(figure=area_fig), md=4)
             ])
         ]
 
@@ -399,6 +398,23 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
         fig_dev.update_yaxes(title_text='Percentage (%)', secondary_y=True)
         fig_dev.update_xaxes(tickangle=45)
 
+        # Additional charts: Pie chart and Horizontal bar chart
+        pie_fig_dev = px.pie(dev_units_df, values='Total no. of units', names='Developer Name',
+                             title='Developers Share (Pie Chart)')
+        pie_fig_dev.update_layout(
+            font=dict(size=12),
+            height=500,
+            margin=dict(l=40, r=40, t=40, b=80)
+        )
+
+        hbar_fig_dev = px.bar(dev_units_df, x='Total no. of units', y='Developer Name', orientation='h',
+                              title='Developers Total Units (Horizontal Bar Chart)')
+        hbar_fig_dev.update_layout(
+            font=dict(size=12),
+            height=600,
+            margin=dict(l=120, r=40, t=40, b=80)
+        )
+
         return [
             dbc.Card(dbc.CardBody([
                 html.H4("Data Summary", className='card-title'),
@@ -410,6 +426,10 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
             ]), className='mb-4'),
             dbc.Row([
                 dbc.Col(dcc.Graph(figure=fig_dev), md=12)
+            ]),
+            dbc.Row([
+                dbc.Col(dcc.Graph(figure=hbar_fig_dev), md=6),
+                dbc.Col(dcc.Graph(figure=pie_fig_dev), md=6)
             ])
         ]
 
@@ -526,6 +546,29 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
             margin=dict(l=40, r=40, t=40, b=120)
         )
 
+        # Additional charts: Line chart and Area chart
+        line_fig_area = px.line(area_units_df, x='YearQuarter', y='Total no. of units', color='Area',
+                                title='Units Launched in Area by Quarter (Line Chart)', markers=True)
+        line_fig_area.update_layout(
+            xaxis_tickangle=-45,
+            xaxis_title='Year-Quarter',
+            yaxis_title='Total Units',
+            font=dict(size=12),
+            height=500,
+            margin=dict(l=40, r=40, t=40, b=120)
+        )
+
+        area_fig_area = px.area(area_units_df, x='YearQuarter', y='Total no. of units', color='Area',
+                                title='Units Launched in Area by Quarter (Area Chart)')
+        area_fig_area.update_layout(
+            xaxis_tickangle=-45,
+            xaxis_title='Year-Quarter',
+            yaxis_title='Total Units',
+            font=dict(size=12),
+            height=500,
+            margin=dict(l=40, r=40, t=40, b=120)
+        )
+
         return [
             dbc.Card(dbc.CardBody([
                 html.H4("Data Summary", className='card-title'),
@@ -539,6 +582,10 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
             ]), className='mb-4'),
             dbc.Row([
                 dbc.Col(dcc.Graph(figure=bar_fig_area), md=12)
+            ]),
+            dbc.Row([
+                dbc.Col(dcc.Graph(figure=line_fig_area), md=6),
+                dbc.Col(dcc.Graph(figure=area_fig_area), md=6)
             ])
         ]
 
@@ -653,6 +700,29 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
             margin=dict(l=40, r=40, t=40, b=80)
         )
 
+        # Additional charts: Line chart and Area chart
+        line_fig_asset = px.line(asset_units_df, x='Year', y='Total no. of units', color='Asset Type',
+                                 title='Asset Type Launched Year-wise (Line Chart)', markers=True)
+        line_fig_asset.update_layout(
+            xaxis_tickangle=-45,
+            xaxis_title='Year',
+            yaxis_title='Total Units',
+            font=dict(size=12),
+            height=500,
+            margin=dict(l=40, r=40, t=40, b=80)
+        )
+
+        area_fig_asset = px.area(asset_units_df, x='Year', y='Total no. of units', color='Asset Type',
+                                 title='Asset Type Launched Year-wise (Area Chart)')
+        area_fig_asset.update_layout(
+            xaxis_tickangle=-45,
+            xaxis_title='Year',
+            yaxis_title='Total Units',
+            font=dict(size=12),
+            height=500,
+            margin=dict(l=40, r=40, t=40, b=80)
+        )
+
         return [
             dbc.Card(dbc.CardBody([
                 html.H4("Data Summary", className='card-title'),
@@ -666,6 +736,10 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
             ]), className='mb-4'),
             dbc.Row([
                 dbc.Col(dcc.Graph(figure=bar_fig_asset), md=12)
+            ]),
+            dbc.Row([
+                dbc.Col(dcc.Graph(figure=line_fig_asset), md=6),
+                dbc.Col(dcc.Graph(figure=area_fig_asset), md=6)
             ])
         ]
 
