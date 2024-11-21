@@ -7,7 +7,7 @@ import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 
 # Load the data from the "Final" sheet
-df = pd.read_excel(r"C:\Users\layek\Downloads\TruEstimate Final Sheet Project (5).xlsx", sheet_name='Final')
+df = pd.read_excel("./data/TruEstimate Final Sheet Project (5).xlsx", sheet_name='Final')
 
 # Data Preprocessing
 df['Launch Date'] = pd.to_datetime(df['Launch Date'], errors='coerce')
