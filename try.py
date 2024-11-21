@@ -11,7 +11,7 @@ df = pd.read_excel(r"C:\Users\layek\Downloads\TruEstimate Final Sheet Project (5
 
 # Data Preprocessing
 df['Launch Date'] = pd.to_datetime(df['Launch Date'], errors='coerce')
-df = df[df['Launch Date'] > '2022-10-01']
+df = df[df['Launch Date'] > '2022-01-01']
 
 df['Year'] = df['Launch Date'].dt.year
 df['Quarter'] = df['Launch Date'].dt.quarter
