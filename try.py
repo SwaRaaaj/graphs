@@ -11,7 +11,7 @@ df = pd.read_excel("./data/TruEstimate Final Sheet Project (5).xlsx", sheet_name
 
 # Data Preprocessing
 df['Launch Date'] = pd.to_datetime(df['Launch Date'], errors='coerce')
-df = df[df['Launch Date'] > '2022-10-01']
+df = df[df['Launch Date'] > '2022-01-01']
 
 df['Year'] = df['Launch Date'].dt.year
 df['Quarter'] = df['Launch Date'].dt.quarter
@@ -303,13 +303,15 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
             return html.Div('No data available for the selected filters.')
 
         total_units_dev = dev_units_df['Total no. of units'].sum()
-        dev_units_df['Percentage'] = (dev_units_df['Total no. of units'] / total_units_dev * 100).round(2)
         # Sort developers by total units
         dev_units_df = dev_units_df.sort_values(by='Total no. of units', ascending=False)
 
         # Calculate summary statistics
         total_units = total_units_dev
         total_developers = dev_units_df.shape[0]
+        total_units_top20 = dev_units_df.head(20)['Total no. of units'].sum()
+        percentage_top20 = (total_units_top20 / total_units) * 100
+
         max_units_row = dev_units_df.iloc[0]
         max_units_dev = max_units_row['Developer Name']
         max_units_value = max_units_row['Total no. of units']
@@ -318,8 +320,8 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
         min_units_value = min_units_row['Total no. of units']
 
         summary_data = {
-            'Metric': ['Total Units', 'Total Developers', 'Developer with Max Units', 'Max Units', 'Developer with Min Units', 'Min Units'],
-            'Value': [total_units, total_developers, max_units_dev, max_units_value, min_units_dev, min_units_value]
+            'Metric': ['Total Units', 'Total Developers', 'Total Units (Top 20 Developers)', 'Percentage of Units (Top 20 Developers)', 'Developer with Max Units', 'Max Units', 'Developer with Min Units', 'Min Units'],
+            'Value': [total_units, total_developers, total_units_top20, f"{percentage_top20:.2f}%", max_units_dev, max_units_value, min_units_dev, min_units_value]
         }
 
         summary_df = pd.DataFrame(summary_data)
@@ -328,7 +330,7 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
         summary_table = dash_table.DataTable(
             data=summary_df.to_dict('records'),
             columns=[{"name": i, "id": i} for i in summary_df.columns],
-            style_table={'overflowX': 'auto', 'border': '1px solid #ccc', 'width': '50%'},
+            style_table={'overflowX': 'auto', 'border': '1px solid #ccc', 'width': '60%'},
             style_cell={
                 'textAlign': 'left',
                 'padding': '10px',
@@ -347,10 +349,16 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
             editable=False
         )
 
-        # Generate the main table with all developers
+        # Select top 20 developers
+        top_dev_units_df = dev_units_df.head(20)
+        total_units_top20 = top_dev_units_df['Total no. of units'].sum()
+        # Recompute percentages over top 20 developers
+        top_dev_units_df['Percentage'] = (top_dev_units_df['Total no. of units'] / total_units_top20 * 100).round(2)
+
+        # Generate the main table with top 20 developers
         main_table = dash_table.DataTable(
-            data=dev_units_df.to_dict('records'),
-            columns=[{"name": i, "id": i} for i in dev_units_df.columns],
+            data=top_dev_units_df.to_dict('records'),
+            columns=[{"name": i, "id": i} for i in top_dev_units_df.columns],
             style_table={'overflowX': 'auto', 'border': '1px solid #ccc', 'width': '100%'},
             style_cell={
                 'textAlign': 'center',
@@ -371,21 +379,21 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
             editable=False
         )
 
-        # Create dual-axis chart for total units and percentage
+        # Create dual-axis chart for total units and percentage for top 20 developers
         fig_dev = make_subplots(specs=[[{"secondary_y": True}]])
 
         fig_dev.add_trace(
-            go.Bar(x=dev_units_df['Developer Name'], y=dev_units_df['Total no. of units'], name='Total Units'),
+            go.Bar(x=top_dev_units_df['Developer Name'], y=top_dev_units_df['Total no. of units'], name='Total Units'),
             secondary_y=False,
         )
 
         fig_dev.add_trace(
-            go.Scatter(x=dev_units_df['Developer Name'], y=dev_units_df['Percentage'], name='Percentage (%)', mode='lines+markers'),
+            go.Scatter(x=top_dev_units_df['Developer Name'], y=top_dev_units_df['Percentage'], name='Percentage (%)', mode='lines+markers'),
             secondary_y=True,
         )
 
         fig_dev.update_layout(
-            title_text="Developers Total Units and Percentage",
+            title_text="Top 20 Developers Total Units and Percentage",
             xaxis_tickangle=-45,
             xaxis_title='Developer Name',
             font=dict(size=12),
@@ -399,16 +407,16 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
         fig_dev.update_xaxes(tickangle=45)
 
         # Additional charts: Pie chart and Horizontal bar chart
-        pie_fig_dev = px.pie(dev_units_df, values='Total no. of units', names='Developer Name',
-                             title='Developers Share (Pie Chart)')
+        pie_fig_dev = px.pie(top_dev_units_df, values='Total no. of units', names='Developer Name',
+                             title='Top 20 Developers Share (Pie Chart)')
         pie_fig_dev.update_layout(
             font=dict(size=12),
             height=500,
             margin=dict(l=40, r=40, t=40, b=80)
         )
 
-        hbar_fig_dev = px.bar(dev_units_df, x='Total no. of units', y='Developer Name', orientation='h',
-                              title='Developers Total Units (Horizontal Bar Chart)')
+        hbar_fig_dev = px.bar(top_dev_units_df, x='Total no. of units', y='Developer Name', orientation='h',
+                              title='Top 20 Developers Total Units (Horizontal Bar Chart)')
         hbar_fig_dev.update_layout(
             font=dict(size=12),
             height=600,
@@ -421,7 +429,7 @@ def update_display(view, selected_areas, selected_developers, selected_asset_typ
                 summary_table,
             ]), className='mb-4'),
             dbc.Card(dbc.CardBody([
-                html.H4("Developers Total Units and Percentage", className='card-title'),
+                html.H4("Top 20 Developers Total Units and Percentage", className='card-title'),
                 main_table,
             ]), className='mb-4'),
             dbc.Row([
