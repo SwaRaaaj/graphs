@@ -1,380 +1,312 @@
-import pandas as pd
-from dash import Dash, dcc, html, Input, Output
-import plotly.graph_objects as go
+import dash
+from dash import html, dcc, Input, Output, dash_table
 import plotly.express as px
-import re
+import plotly.graph_objs as go
+import pandas as pd
 
-# Load and clean data
-# Load and clean data using relative path
-data = pd.read_excel(r"data/TruEstimate Final Sheet Project (3).xlsx", header=1)
-data['Launch Date'] = pd.to_datetime(data['Launch Date'], errors='coerce')
-data['Handover date'] = pd.to_datetime(data['Handover date'], errors='coerce')
-data['Developer Name'] = data['Developer Name'].str.strip()
-data['Area'] = data['Area'].str.title()
-data['Asset Type'] = data['Asset Type'].str.strip().str.title()  # Ensure consistent formatting for Asset Type
+# Load the data from the "Final" sheetdf = pd.read_excel("./data/TruEstimate Final Sheet Project (5).xlsx", sheet_name='final')
+df = pd.read_excel("./data/TruEstimate Final Sheet Project (5).xlsx", sheet_name='final')
 
-# Replace 'Land' with 'Plot' to maintain consistency
-data['Asset Type'] = data['Asset Type'].replace('Land', 'Plot')
+# Convert 'Launch Date' to datetime type and filter projects after October 2022
+df['Launch Date'] = pd.to_datetime(df['Launch Date'], errors='coerce')
+df = df[df['Launch Date'] > '2022-10-01']
 
-filtered_data = data[(data['Launch Date'] > '2022-10-01') & data['Area'].notna() & data['Total no. of units'].notna()]
-filtered_data = filtered_data.copy()  # Avoid SettingWithCopyWarning
-filtered_data['Handover Time (Months)'] = (filtered_data['Handover date'] - filtered_data['Launch Date']).dt.days // 30
+# Extract year and quarter from the 'Launch Date', and create a readable "Year Q" format
+df['Year'] = df['Launch Date'].dt.year
+df['Quarter'] = df['Launch Date'].dt.quarter
+df['YearQuarter'] = df['Year'].astype(str) + ' Q' + df['Quarter'].astype(str)
 
-# Debugging: Check if all asset types are present in the filtered dataset
+# Handle mixed data types in 'Area' and 'Developer Name' columns by converting all values to strings
+# Replace NaN values in 'Area' with a placeholder
+df['Area'] = df['Area'].fillna('Unknown').astype(str)
+df['Developer Name'] = df['Developer Name'].astype(str)
 
+# Generate unique YearQuarter values for RangeSlider
+year_quarters = df['YearQuarter'].unique()
+year_quarters = sorted(year_quarters, key=lambda x: (int(x.split()[0]), int(x.split()[1][1])))
 
-def clean_bhk_column(df):
-    # Helper function to extract the first valid number from a string with multiple values
-    def extract_first_number(value):
-        if isinstance(value, (int, float)):
-            return float(value)  # Already a number
-        elif isinstance(value, str):
-            # Use regex to find numbers (allowing decimals)
-            numbers = re.findall(r'\d+\.?\d*', value)
-            if numbers:
-                return float(numbers[0])  # Return the first valid number
-        return None  # Return None for non-numeric entries or unexpected types
+# Initialize the app
+app = dash.Dash(__name__)
 
-    # Apply extraction only if the Asset Type is Apartment
-    df.loc[df['Asset Type'] == 'Apartment', 'BHK'] = df[df['Asset Type'] == 'Apartment']['BHK'].apply(extract_first_number)
+app.layout = html.Div(children=[
+    html.H1(children='Real Estate Project Dashboard', style={'textAlign': 'center', 'padding': '20px', 'fontFamily': 'Arial', 'fontWeight': 'bold', 'fontSize': '36px', 'color': '#003366'}),
 
-    # Drop rows where BHK is None only for Apartments, not for Villas or Plots
-    apartment_filtered = df[df['Asset Type'] == 'Apartment'].dropna(subset=['BHK']).copy()
-    non_apartment_filtered = df[df['Asset Type'] != 'Apartment'].copy()
+    html.Div([
+        html.Div([
+            html.Label('Select Graph View:', style={'fontSize': '16px', 'fontWeight': 'bold', 'color': '#003366', 'marginBottom': '5px'}),
+            dcc.Dropdown(
+                id='graph-view-dropdown',
+                options=[
+                    {'label': 'Total Units by Quarter', 'value': 'QUARTERLY'},
+                    {'label': 'Developer-wise Quarterly Launches', 'value': 'DEVELOPER'},
+                    {'label': 'Units Launched in Area by Quarter', 'value': 'AREA_QUARTERLY'},
+                    {'label': 'Asset Type Launched Year-wise', 'value': 'ASSET_YEARLY'}
+                ],
+                value='QUARTERLY',
+                style={'width': '100%', 'padding': '5px', 'fontSize': '14px', 'borderRadius': '5px', 'border': '1px solid #003366'}
+            )
+        ], style={'width': '23%', 'display': 'inline-block', 'paddingRight': '10px'}),
 
-    # Ensure all 'BHK' values are float type for Apartments
-    if 'BHK' in apartment_filtered.columns:
-        apartment_filtered['BHK'] = pd.to_numeric(apartment_filtered['BHK'], errors='coerce')
+        html.Div([
+            html.Label('Select Area:', style={'fontSize': '16px', 'fontWeight': 'bold', 'color': '#003366', 'marginBottom': '5px'}),
+            dcc.Dropdown(
+                id='area-filter-dropdown',
+                options=[{'label': area, 'value': area} for area in sorted(df['Area'].unique())],
+                multi=True,
+                placeholder='Filter by Area',
+                style={'width': '100%', 'padding': '5px', 'fontSize': '14px', 'borderRadius': '5px', 'border': '1px solid #003366'}
+            )
+        ], style={'width': '23%', 'display': 'inline-block', 'paddingRight': '10px'}),
 
-    # Concatenate back Apartments and non-Apartment types
-    df = pd.concat([apartment_filtered, non_apartment_filtered], ignore_index=True)
+        html.Div([
+            html.Label('Select Developer:', style={'fontSize': '16px', 'fontWeight': 'bold', 'color': '#003366', 'marginBottom': '5px'}),
+            dcc.Dropdown(
+                id='developer-filter-dropdown',
+                options=[{'label': dev, 'value': dev} for dev in sorted(df['Developer Name'].unique())],
+                multi=True,
+                placeholder='Filter by Developer',
+                style={'width': '100%', 'padding': '5px', 'fontSize': '14px', 'borderRadius': '5px', 'border': '1px solid #003366'}
+            )
+        ], style={'width': '23%', 'display': 'inline-block', 'paddingRight': '10px'})
+    ], style={'textAlign': 'center', 'marginBottom': '10px', 'display': 'flex', 'justifyContent': 'center', 'gap': '10px'}),
 
-    return df
+    html.Div([
+        html.Div([
+            html.Label('Select Date Range:', style={'fontSize': '16px', 'fontWeight': 'bold', 'color': '#003366', 'marginBottom': '5px'}),
+            dcc.RangeSlider(
+                id='date-range-slider',
+                min=0,
+                max=len(year_quarters) - 1,
+                value=[0, len(year_quarters) - 1],
+                marks={i: year_quarters[i] for i in range(len(year_quarters))},
+                step=1
+            )
+        ], style={'width': '80%', 'display': 'inline-block'})
+    ], style={'textAlign': 'center', 'marginBottom': '30px', 'display': 'flex', 'justifyContent': 'center'}),
 
-# Apply the updated cleaning function to your dataset
-filtered_data = clean_bhk_column(filtered_data)
-
-# Debugging: Check filtered data after BHK cleaning
-
-
-# Apply the cleaning function to your dataset
-filtered_data = clean_bhk_column(filtered_data)
-
-# Debugging: Check filtered data after BHK cleaning
-
-
-# Initialize Dash app
-app = Dash(__name__)
-
-# Define the dropdown options
-graph_options = [
-    {'label': 'Handover by Area Over Time', 'value': 'handover_area'},
-    {'label': 'New Launches by Area Over Time', 'value': 'new_launches_area'},
-    {'label': 'Total Project Size Over Time', 'value': 'total_project_size'},
-    {'label': 'Asset Type Distribution Over Time', 'value': 'asset_type_distribution'},
-    {'label': 'Number of Projects by Area Over Time (Cumulative)', 'value': 'projects_area_cumulative'},
-    {'label': 'Developer Dominance in Unit Volume', 'value': 'developer_unit_volume'},
-    {'label': 'Time to Handover by Developer and Asset Type (Median)', 'value': 'handover_time_developer'},
-    {'label': 'Total Number of Units by Area Over Time', 'value': 'total_units_area'},
-    {'label': 'Developer Dominance (Total Units) - Apartment', 'value': 'developer_dominance_apartment'},
-    {'label': 'Developer Dominance (Total Units) - Plot', 'value': 'developer_dominance_plot'},
-    {'label': 'Developer Dominance (Total Units) - Villa', 'value': 'developer_dominance_villa'},
-    {'label': 'Famous Developer Quarterly Project Launches', 'value': 'famous_dev_quarterly_launches'},
-    {'label': 'Configuration by Area - Apartment', 'value': 'config_by_area_apartment'},
-    {'label': 'Configuration by Area - Villa', 'value': 'config_by_area_villa'},
-    {'label': 'Configuration by Area - Plot', 'value': 'config_by_area_plot'},
-    {'label': 'Handover by Area Over Time - Apartment', 'value': 'handover_by_area_apartment'},
-    {'label': 'Handover by Area Over Time - Villa', 'value': 'handover_by_area_villa'},
-    {'label': 'Handover by Area Over Time - Plot', 'value': 'handover_by_area_plot'},
-    {'label': 'Asset Type by Area Over Time (Total Projects) - North', 'value': 'asset_type_projects_north'},
-    {'label': 'Asset Type by Area Over Time (Total Projects) - East', 'value': 'asset_type_projects_east'},
-    {'label': 'Asset Type by Area Over Time (Total Projects) - South', 'value': 'asset_type_projects_south'},
-    {'label': 'Asset Type by Area Over Time (Total Projects) - West', 'value': 'asset_type_projects_west'},
-    {'label': 'Asset Type by Area Over Time (Total Units) - North', 'value': 'asset_type_units_north'},
-    {'label': 'Asset Type by Area Over Time (Total Units) - East', 'value': 'asset_type_units_east'},
-    {'label': 'Asset Type by Area Over Time (Total Units) - South', 'value': 'asset_type_units_south'},
-    {'label': 'Asset Type by Area Over Time (Total Units) - West', 'value': 'asset_type_units_west'},
-]
-
-# Layout
-app.layout = html.Div([
-    html.H1("TruEstate Bangalore Real Estate Market Dashboard"),
-    dcc.Dropdown(id='graph-selector', options=graph_options, value='handover_area', multi=False),
-    html.Div(id='graph-container')
+    html.Div(id='display-container', style={'width': '90%', 'margin': '0 auto'})  # This div will update to display both the table and graphs based on selection
 ])
 
 @app.callback(
-    Output('graph-container', 'children'),
-    [Input('graph-selector', 'value')]
+    Output('display-container', 'children'),
+    [Input('graph-view-dropdown', 'value'),
+     Input('area-filter-dropdown', 'value'),
+     Input('developer-filter-dropdown', 'value'),
+     Input('date-range-slider', 'value')]
 )
-def update_graph(selected_graph):
-    if selected_graph == 'handover_area':
-        return generate_handover_by_area_graph()
-    elif selected_graph == 'new_launches_area':
-        return generate_new_launches_graph()
-    elif selected_graph == 'total_project_size':
-        return generate_total_project_size_graph()
-    elif selected_graph == 'asset_type_distribution':
-        return generate_asset_type_distribution_graph()
-    elif selected_graph == 'projects_area_cumulative':
-        return generate_projects_area_cumulative_graph()
-    elif selected_graph == 'developer_unit_volume':
-        return generate_developer_unit_volume_graph()
-    elif selected_graph == 'famous_dev_quarterly_launches':
-        return generate_famous_developer_quarterly_launches_graph()
-    elif selected_graph == 'handover_time_developer':
-        return generate_handover_time_developer_graph()
-    elif selected_graph == 'total_units_area':
-        return generate_total_units_area_graph()
-    elif selected_graph == 'developer_dominance_apartment':
-        return generate_developer_dominance_graph('Apartment')
-    elif selected_graph == 'developer_dominance_villa':
-        return generate_developer_dominance_graph('Villa')
-    elif selected_graph == 'developer_dominance_plot':
-        return generate_developer_dominance_graph('Plot')
-    elif selected_graph == 'config_by_area_apartment':
-        return generate_configuration_by_area_graph('Apartment')
-    elif selected_graph == 'config_by_area_villa':
-        return generate_configuration_by_area_graph('Villa')
-    elif selected_graph == 'config_by_area_plot':
-        return generate_configuration_by_area_graph('Plot')
-    elif selected_graph == 'handover_by_area_apartment':
-        return generate_handover_by_area_graph('Apartment')
-    elif selected_graph == 'handover_by_area_villa':
-        return generate_handover_by_area_graph('Villa')
-    elif selected_graph == 'handover_by_area_plot':
-        return generate_handover_by_area_graph('Plot')
-    elif selected_graph == 'asset_type_projects_north':
-        return generate_asset_type_projects_graph('North')
-    elif selected_graph == 'asset_type_projects_east':
-        return generate_asset_type_projects_graph('East')
-    elif selected_graph == 'asset_type_projects_south':
-        return generate_asset_type_projects_graph('South')
-    elif selected_graph == 'asset_type_projects_west':
-        return generate_asset_type_projects_graph('West')
-    elif selected_graph == 'asset_type_units_north':
-        return generate_asset_type_units_graph('North')
-    elif selected_graph == 'asset_type_units_east':
-        return generate_asset_type_units_graph('East')
-    elif selected_graph == 'asset_type_units_south':
-        return generate_asset_type_units_graph('South')
-    elif selected_graph == 'asset_type_units_west':
-        return generate_asset_type_units_graph('West')
-    else:
-        return html.Div("No graph selected")
+def update_display(view, selected_areas, selected_developers, date_range):
+    filtered_df = df.copy()
 
-# Helper Function: Generate Handover by Area Graph
-def generate_handover_by_area_graph(asset_type=None):
-    handover_data = filtered_data if asset_type is None else filtered_data[filtered_data['Asset Type'] == asset_type]
-    if not handover_data.empty:
+    # Apply filters if selected
+    if selected_areas:
+        filtered_df = filtered_df[filtered_df['Area'].isin(selected_areas)]
+    if selected_developers:
+        filtered_df = filtered_df[filtered_df['Developer Name'].isin(selected_developers)]
+
+    # Apply date range filter
+    selected_year_quarters = year_quarters[date_range[0]:date_range[1] + 1]
+    filtered_df = filtered_df[filtered_df['YearQuarter'].isin(selected_year_quarters)]
+
+    # Handle different views: QUARTERLY, DEVELOPER, AREA_QUARTERLY, ASSET_YEARLY
+    if view == 'QUARTERLY':
+        # Calculate total units by quarter
+        total_units_df = filtered_df.groupby(['YearQuarter']).agg({'Total no. of units': 'sum'}).reset_index()
         
-        handover_data['Handover Quarter'] = handover_data['Handover date'].dt.to_period('Q')
-        handover_by_area = handover_data.groupby(['Handover Quarter', 'Area']).size().unstack(fill_value=0)
-        fig = go.Figure()
-        for area in handover_by_area.columns:
-            fig.add_trace(go.Scatter(
-                x=handover_by_area.index.astype(str),
-                y=handover_by_area[area],
-                mode='lines+markers',
-                name=area
-            ))
-        fig.update_layout(
-            title=f"{asset_type if asset_type else 'Overall'} Handover by Area Over Time",
-            xaxis_title="Quarter",
-            yaxis_title="Number of Projects Handover",
-            template="plotly_white",
-            legend_title="Area"
+        # Create the line graph for Total Units by Quarter
+        line_fig_quarter = px.line(total_units_df, x='YearQuarter', y='Total no. of units', 
+                                   title='Total Units by Quarter (Line Chart)', markers=True)
+        line_fig_quarter.update_layout(title={'font': {'size': 24}},
+                                       xaxis={'title': {'font': {'size': 18}}},
+                                       yaxis={'title': {'font': {'size': 18}}},
+                                       height=500)
+        
+        # Create the bar graph for Total Units by Quarter
+        bar_fig_quarter = px.bar(total_units_df, x='YearQuarter', y='Total no. of units', 
+                                 title='Total Units by Quarter (Bar Chart)')
+        bar_fig_quarter.update_layout(title={'font': {'size': 24}},
+                                      xaxis={'title': {'font': {'size': 18}}},
+                                      yaxis={'title': {'font': {'size': 18}}},
+                                      height=500)
+
+        # Set the data table for the quarterly view
+        table_df = total_units_df
+
+        # Generate the table dynamically
+        table = dash_table.DataTable(
+            data=table_df.to_dict('records'),
+            columns=[{"name": i, "id": i} for i in table_df.columns],
+            style_table={'height': '400px', 'overflowY': 'auto', 'border': '2px solid #003366', 'borderRadius': '5px'},
+            style_cell={
+                'textAlign': 'center',
+                'padding': '10px',
+                'whiteSpace': 'normal',
+                'fontSize': '16px',
+                'fontFamily': 'Arial'
+            },
+            style_header={
+                'backgroundColor': '#003366',
+                'fontWeight': 'bold',
+                'color': 'white',
+                'textAlign': 'center',
+                'fontSize': '18px'
+            },
+            style_data_conditional=[
+                {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}
+            ],
+            fixed_rows={'headers': True, 'data': 0},
+            sort_action='none',  # Sorting disabled
+            page_action='none',
+            editable=False
         )
-        return dcc.Graph(figure=fig)
+
+        return [
+            html.Div(table, style={'marginBottom': '20px'}),
+            html.Div([dcc.Graph(figure=line_fig_quarter), dcc.Graph(figure=bar_fig_quarter)])
+        ]
+    elif view == 'DEVELOPER':
+        # Calculate total units by developer and quarter
+        dev_units_df = filtered_df.groupby(['YearQuarter', 'Developer Name']).agg({'Total no. of units': 'sum'}).reset_index()
+        
+        # Create the bar graph for Developer-wise Quarterly Launches
+        bar_fig_dev = px.bar(dev_units_df, x='YearQuarter', y='Total no. of units', color='Developer Name',
+                             title='Developer-wise Quarterly Launches (Stacked Bar)')
+        bar_fig_dev.update_layout(title={'font': {'size': 24}},
+                                  xaxis={'title': {'font': {'size': 18}}},
+                                  yaxis={'title': {'font': {'size': 18}}},
+                                  height=500)
+
+        # Set the data table for the developer view
+        table_df = dev_units_df
+
+        # Generate the table dynamically
+        table = dash_table.DataTable(
+            data=table_df.to_dict('records'),
+            columns=[{"name": i, "id": i} for i in table_df.columns],
+            style_table={'height': '400px', 'overflowY': 'auto', 'border': '2px solid #003366', 'borderRadius': '5px'},
+            style_cell={
+                'textAlign': 'center',
+                'padding': '10px',
+                'whiteSpace': 'normal',
+                'fontSize': '16px',
+                'fontFamily': 'Arial'
+            },
+            style_header={
+                'backgroundColor': '#003366',
+                'fontWeight': 'bold',
+                'color': 'white',
+                'textAlign': 'center',
+                'fontSize': '18px'
+            },
+            style_data_conditional=[
+                {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}
+            ],
+            fixed_rows={'headers': True, 'data': 0},
+            sort_action='none',  # Sorting disabled
+            page_action='none',
+            editable=False
+        )
+
+        return [
+            html.Div(table, style={'marginBottom': '20px'}),
+            html.Div([dcc.Graph(figure=bar_fig_dev)])
+        ]
+    elif view == 'AREA_QUARTERLY':
+        # Calculate total units launched in each area by quarter
+        area_units_df = filtered_df.groupby(['YearQuarter', 'Area']).agg({'Total no. of units': 'sum'}).reset_index()
+
+        # Create bar graph for Units Launched in Area by Quarter
+        bar_fig_area = px.bar(area_units_df, x='YearQuarter', y='Total no. of units', color='Area',
+                              title='Units Launched in Area by Quarter (Bar Chart)')
+        bar_fig_area.update_layout(title={'font': {'size': 24}},
+                                   xaxis={'title': {'font': {'size': 18}}},
+                                   yaxis={'title': {'font': {'size': 18}}},
+                                   height=500)
+
+        # Set the data table for the area quarterly view
+        table_df = area_units_df
+
+        # Generate the table dynamically
+        table = dash_table.DataTable(
+            data=table_df.to_dict('records'),
+            columns=[{"name": i, "id": i} for i in table_df.columns],
+            style_table={'height': '400px', 'overflowY': 'auto', 'border': '2px solid #003366', 'borderRadius': '5px'},
+            style_cell={
+                'textAlign': 'center',
+                'padding': '10px',
+                'whiteSpace': 'normal',
+                'fontSize': '16px',
+                'fontFamily': 'Arial'
+            },
+            style_header={
+                'backgroundColor': '#003366',
+                'fontWeight': 'bold',
+                'color': 'white',
+                'textAlign': 'center',
+                'fontSize': '18px'
+            },
+            style_data_conditional=[
+                {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}
+            ],
+            fixed_rows={'headers': True, 'data': 0},
+            sort_action='none',  # Sorting disabled
+            page_action='none',
+            editable=False
+        )
+
+        return [
+            html.Div(table, style={'marginBottom': '20px'}),
+            html.Div([dcc.Graph(figure=bar_fig_area)])
+        ]
+    elif view == 'ASSET_YEARLY':
+        # Calculate total units launched by asset type (Apartment, Villa, Plot) year-wise
+        asset_units_df = filtered_df.groupby(['Year', 'Asset Type']).agg({'Total no. of units': 'sum'}).reset_index()
+        
+        # Create stacked bar chart for Asset Type launched Year-wise
+        bar_fig_asset = px.bar(asset_units_df, x='Year', y='Total no. of units', color='Asset Type',
+                               title='Asset Type Launched Year-wise (Stacked Bar)')
+        bar_fig_asset.update_layout(title={'font': {'size': 24}},
+                                    xaxis={'title': {'font': {'size': 18}}},
+                                    yaxis={'title': {'font': {'size': 18}}},
+                                    height=500)
+
+        # Set the data table for the asset yearly view
+        table_df = asset_units_df
+
+        # Generate the table dynamically
+        table = dash_table.DataTable(
+            data=table_df.to_dict('records'),
+            columns=[{"name": i, "id": i} for i in table_df.columns],
+            style_table={'height': '400px', 'overflowY': 'auto', 'border': '2px solid #003366', 'borderRadius': '5px'},
+            style_cell={
+                'textAlign': 'center',
+                'padding': '10px',
+                'whiteSpace': 'normal',
+                'fontSize': '16px',
+                'fontFamily': 'Arial'
+            },
+            style_header={
+                'backgroundColor': '#003366',
+                'fontWeight': 'bold',
+                'color': 'white',
+                'textAlign': 'center',
+                'fontSize': '18px'
+            },
+            style_data_conditional=[
+                {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}
+            ],
+            fixed_rows={'headers': True, 'data': 0},
+            sort_action='none',  # Sorting disabled
+            page_action='none',
+            editable=False
+        )
+
+        return [
+            html.Div(table, style={'marginBottom': '20px'}),
+            html.Div([dcc.Graph(figure=bar_fig_asset)])
+        ]
     else:
-        return html.Div(f"No data available for {asset_type} Handover by Area")
+        return html.Div('Select a valid graph type')
 
-# Helper Function: Generate New Launches by Area Graph
-def generate_new_launches_graph():
-    new_launches = filtered_data.groupby([filtered_data['Launch Date'].dt.to_period('Q'), 'Area']).size().unstack(fill_value=0)
-    fig = go.Figure()
-    for area in new_launches.columns:
-        fig.add_trace(go.Scatter(x=new_launches.index.astype(str), y=new_launches[area], mode='lines+markers', name=area))
-    fig.update_layout(title="New Launches by Area Over Time", xaxis_title="Time", yaxis_title="Projects")
-    return dcc.Graph(figure=fig)
-
-# Helper Function: Generate Total Project Size Graph
-def generate_total_project_size_graph():
-    project_size_trend = filtered_data.groupby(filtered_data['Launch Date'].dt.to_period('Q'))['Project Area (Acres)'].sum()
-    fig = go.Figure(go.Scatter(x=project_size_trend.index.astype(str), y=project_size_trend.values, mode='lines+markers'))
-    fig.update_layout(title="Total Project Size Over Time", xaxis_title="Quarter", yaxis_title="Total Size (Acres)")
-    return dcc.Graph(figure=fig)
-
-# Helper Function: Generate Asset Type Distribution Graph
-def generate_asset_type_distribution_graph():
-    asset_type_trend = filtered_data.groupby([filtered_data['Launch Date'].dt.to_period('Q'), 'Asset Type']).size().unstack(fill_value=0)
-    fig = go.Figure()
-    for asset_type in asset_type_trend.columns:
-        fig.add_trace(go.Scatter(x=asset_type_trend.index.astype(str), y=asset_type_trend[asset_type], mode='lines+markers', name=f'{asset_type} Projects'))
-    fig.update_layout(title="Asset Type Distribution Over Time", xaxis_title="Quarter", yaxis_title="Projects")
-    return dcc.Graph(figure=fig)
-
-# Helper Function: Generate Projects Area Cumulative Graph
-def generate_projects_area_cumulative_graph():
-    projects_trend = filtered_data.groupby([filtered_data['Launch Date'].dt.to_period('Q'), 'Area']).size().unstack().cumsum()
-    fig = go.Figure()
-    for area in projects_trend.columns:
-        fig.add_trace(go.Scatter(x=projects_trend.index.astype(str), y=projects_trend[area], mode='lines+markers', name=f'Projects in {area}'))
-    fig.update_layout(title="Number of Projects by Area Over Time (Cumulative)", xaxis_title="Quarter", yaxis_title="Cumulative Projects")
-    return dcc.Graph(figure=fig)
-
-# Helper Function: Generate Developer Unit Volume Graph
-def generate_developer_unit_volume_graph():
-    dev_unit_counts = filtered_data.groupby('Developer Name')['Total no. of units'].sum().sort_values(ascending=False).head(20)
-    fig = px.bar(
-        x=dev_unit_counts.index,
-        y=dev_unit_counts.values,
-        title="Developer Dominance in Unit Volume (Top 20 Developers)",
-        labels={'x': 'Developer', 'y': 'Total Units'}
-    )
-    fig.update_layout(
-        xaxis_tickangle=-45,
-        xaxis_title="Developer",
-        yaxis_title="Total Units",
-        showlegend=False
-    )
-    return dcc.Graph(figure=fig)
-
-# Helper Function: Generate Famous Developer Quarterly Launches Graph
-def generate_famous_developer_quarterly_launches_graph():
-    famous_developers = ['Prestige', 'Brigade', 'Sobha', 'Assetz', 'Birla', 'Mahindra', 'Adarsh', 'Puravankara', 'Raheja']
-    famous_data = filtered_data[filtered_data['Developer Name'].isin(famous_developers)]
-    if not famous_data.empty:
-        famous_data['Launch Quarter'] = famous_data['Launch Date'].dt.to_period('Q')
-        quarterly_launches = famous_data.groupby(['Launch Quarter', 'Developer Name']).size().unstack(fill_value=0)
-        fig = go.Figure()
-        for developer in famous_developers:
-            if developer in quarterly_launches.columns:
-                fig.add_trace(go.Bar(
-                    x=quarterly_launches.index.astype(str),
-                    y=quarterly_launches[developer],
-                    name=developer
-                ))
-        fig.update_layout(
-            title="Famous Developer Quarterly Project Launches",
-            xaxis_title="Quarter",
-            yaxis_title="Number of Projects Launched",
-            barmode="stack",
-            template="plotly_white",
-            legend_title_text="Developers"
-        )
-        return dcc.Graph(figure=fig)
-    else:
-        fig = go.Figure().add_annotation(
-            text="No data available for Famous Developers",
-            xref="paper", yref="paper", showarrow=False
-        )
-        return dcc.Graph(figure=fig)
-
-# Helper Function: Generate Handover Time Developer Graph
-def generate_handover_time_developer_graph():
-    handover_median = filtered_data.groupby(['Developer Name', 'Asset Type'])['Handover Time (Months)'].median().unstack(fill_value=0)
-    fig = go.Figure()
-    for asset_type in handover_median.columns:
-        fig.add_trace(go.Bar(x=handover_median.index, y=handover_median[asset_type], name=asset_type))
-    fig.update_layout(title="Time to Handover by Developer and Asset Type (Median)", xaxis_title="Developer", yaxis_title="Median Handover Time (Months)")
-    return dcc.Graph(figure=fig)
-
-# Helper Function: Generate Total Units by Area Graph
-def generate_total_units_area_graph():
-    units_by_area = filtered_data.groupby([filtered_data['Launch Date'].dt.to_period('Q'), 'Area'])['Total no. of units'].sum().unstack(fill_value=0)
-    fig = go.Figure()
-    for area in units_by_area.columns:
-        fig.add_trace(go.Scatter(x=units_by_area.index.astype(str), y=units_by_area[area], mode='lines+markers', name=area))
-    fig.update_layout(title="Total Number of Units by Area Over Time", xaxis_title="Quarter", yaxis_title="Total Units")
-    return dcc.Graph(figure=fig)
-
-# Helper Function: Generate Developer Dominance Graph
-def generate_developer_dominance_graph(asset_type):
-    dev_data = filtered_data[filtered_data['Asset Type'] == asset_type]
-   
-       
-    if not dev_data.empty:
-        dev_counts = dev_data.groupby('Developer Name')['Total no. of units'].sum().sort_values(ascending=False).head(20)
-        fig = px.bar(
-            x=dev_counts.index,
-            y=dev_counts.values,
-            title=f"Developer Dominance (Total Units) - {asset_type}",
-            labels={'x': 'Developer', 'y': 'Total Units'}
-        )
-        fig.update_layout(
-            xaxis_tickangle=-45,
-            xaxis_title="Developer",
-            yaxis_title="Total Units",
-            showlegend=False
-        )
-        return dcc.Graph(figure=fig)
-    else:
-        return html.Div(f"No data available for Developer Dominance - {asset_type}")
-
-# Helper Function: Generate Configuration by Area Graph
-def generate_configuration_by_area_graph(asset_type):
-    config_data = filtered_data[filtered_data['Asset Type'] == asset_type]
-    
-    if not config_data.empty:
-        config_by_area = config_data.groupby(['Area', 'BHK']).size().unstack(fill_value=0)
-        fig = go.Figure()
-        for bhk in config_by_area.columns:
-            fig.add_trace(go.Bar(
-                x=config_by_area.index,
-                y=config_by_area[bhk],
-                name=f"{bhk} BHK"
-            ))
-        fig.update_layout(
-            title=f"{asset_type} Configuration by Area",
-            xaxis_title="Area",
-            yaxis_title="Total Units",
-            barmode="stack",
-            template="plotly_white",
-            legend_title="Configuration (BHK)"
-        )
-        return dcc.Graph(figure=fig)
-    else:
-        return html.Div(f"No data available for {asset_type} Configuration by Area")
-
-# Helper Function: Generate Asset Type Projects Graph
-def generate_asset_type_projects_graph(area):
-    area_data = filtered_data[filtered_data['Area'] == area]
-    
-    if not area_data.empty:
-        asset_type_projects = area_data.groupby([area_data['Launch Date'].dt.to_period('Q'), 'Asset Type']).size().unstack(fill_value=0)
-        fig = go.Figure()
-        for asset_type in asset_type_projects.columns:
-            fig.add_trace(go.Scatter(x=asset_type_projects.index.astype(str), y=asset_type_projects[asset_type], mode='lines+markers', name=asset_type))
-        fig.update_layout(
-            title=f"Asset Type Distribution Over Time (Total Projects) - {area}",
-            xaxis_title="Quarter",
-            yaxis_title="Total Projects",
-            template="plotly_white"
-        )
-        return dcc.Graph(figure=fig)
-    else:
-        return html.Div(f"No data available for {area} - Asset Type Projects Over Time")
-
-# Helper Function: Generate Asset Type Units Graph
-def generate_asset_type_units_graph(area):
-    area_data = filtered_data[filtered_data['Area'] == area]
-    if not area_data.empty:
-        asset_type_units = area_data.groupby([area_data['Launch Date'].dt.to_period('Q'), 'Asset Type'])['Total no. of units'].sum().unstack(fill_value=0)
-        fig = go.Figure()
-        for asset_type in asset_type_units.columns:
-            fig.add_trace(go.Scatter(x=asset_type_units.index.astype(str), y=asset_type_units[asset_type], mode='lines+markers', name=asset_type))
-        fig.update_layout(
-            title=f"Asset Type Distribution Over Time (Total Units) - {area}",
-            xaxis_title="Quarter",
-            yaxis_title="Total Units",
-            template="plotly_white"
-        )
-        return dcc.Graph(figure=fig)
-    else:
-        return html.Div(f"No data available for {area} - Asset Type Units Over Time")
-
-# Run the app
 # Run the app
 if __name__ == "__main__":
     app.run_server(host='0.0.0.0', port=10000, debug=True)
