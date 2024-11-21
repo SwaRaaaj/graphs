@@ -5,7 +5,7 @@ import plotly.graph_objs as go
 import pandas as pd
 
 # Load the data from the "Final" sheetdf = pd.read_excel("./data/TruEstimate Final Sheet Project (5).xlsx", sheet_name='final')
-df = pd.read_excel("./data/TruEstimate Final Sheet Project (5).xlsx", sheet_name='final')
+df = pd.read_excel("./data/TruEstimate Final Sheet Project (5).xlsx", sheet_name='Final')
 
 # Convert 'Launch Date' to datetime type and filter projects after October 2022
 df['Launch Date'] = pd.to_datetime(df['Launch Date'], errors='coerce')
